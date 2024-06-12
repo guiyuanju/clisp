@@ -3,40 +3,49 @@
 #include "string.h"
 
 #include "format.h"
-
-typedef enum {
-    INT,
-    SYMBOL,
-} AtomTag;
-
-typedef struct {
-    AtomTag tag;
-    void* content;
-} Atom;
-
-typedef enum {
-    ATOM,
-    LIST,
-} DataType;
-
-typedef struct {
-    DataType type;
-    void* content;
-} Data;
-
-typedef struct List {
-    Data data;
-    struct List* next;
-} List;
+#include "lisp.h"
 
 Data makeInt(int x) {
     Atom* atom = (Atom*)malloc(sizeof(Atom));
-    atom->tag = INT;
+    atom->tag = ATOM_TAG_INT;
     atom->content = malloc(sizeof(int));
     memcpy(atom->content, &x, sizeof(int));
 
     Data data = {ATOM, atom};
 
+    return data;
+}
+
+Data makeString(char* s) {
+    Atom* atom = (Atom*)malloc(sizeof(Atom));
+    atom->tag = ATOM_TAG_STRING;
+    atom->content = malloc(strlen(s));
+    memcpy(atom->content, s, strlen(s));
+
+    Data data = {ATOM, atom};
+
+    return data;
+}
+
+Data makeSymbol(char* s) {
+    Atom* atom = (Atom*)malloc(sizeof(Atom));
+    atom->tag = ATOM_TAG_SYMBOL;
+    atom->content = malloc(strlen(s));
+    memcpy(atom->content, s, strlen(s));
+
+    Data data = {ATOM, atom};
+
+    return data;
+}
+
+Data makeQuote(Data data) {
+    Atom* atom = (Atom*)malloc(sizeof(Atom));
+    atom->tag = ATOM_TAG_QUOTE;
+    atom->content = malloc(sizeof(Data));
+    memcpy(atom->content, &data, sizeof(Data));
+
+    Data data = {ATOM, atom};
+    
     return data;
 }
 
@@ -60,11 +69,14 @@ void ppAtom(Atom* atom) {
     }
 
     switch (atom->tag) {
-        case INT:
+        case ATOM_TAG_INT:
             printf("%d", *(int*)atom->content);
             return;
-        case SYMBOL:
+        case ATOM_TAG_SYMBOL:
             printf("%s", (char*)atom->content);
+            return;
+        case ATOM_TAG_STRING:
+            printf("\"%s\"", (char*)atom->content);
             return;
         default:
             printf("unrecognizable type %d\n", atom->tag);
@@ -98,13 +110,11 @@ void ppData(Data data) {
     }
 }
 
-#define Empty NULL
-
-int main() {
-    Data four = makeInt(4);
-    Data two = makeInt(2);
-    List* sublist = cons(two, cons(four, cons(four, Empty)));
-    List* list = cons(datify(sublist), cons(four, Empty));
-    ppList(list);
-    newline();
-}
+// int main() {
+//     Data four = makeInt(4);
+//     Data two = makeInt(2);
+//     List* sublist = cons(two, cons(four, cons(four, Empty)));
+//     List* list = cons(datify(sublist), cons(four, Empty));
+//     ppList(list);
+//     newline();
+// }
