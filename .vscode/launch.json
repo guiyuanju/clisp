@@ -1,0 +1,17 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch (lldb)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/evaluator",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            // "miDebuggerPath": "/Users/june/.vscode/extensions/ms-vscode.cpptools-1.21.0-darwin-arm64/debugAdapters/lldb-mi/bin/lldb-mi",
+        }
+    ]
+}

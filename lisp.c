@@ -54,10 +54,15 @@ Data makeProc(void* proc) {
     Atom* atom = (Atom*)malloc(sizeof(Atom));
     atom->tag = ATOM_TAG_PROC;
     atom->content = malloc(sizeof(void*));
-    memcpy(atom->content, proc, sizeof(void*));
+    memcpy(atom->content, &proc, sizeof(void*));
 
     Data data = {ATOM, atom};
 
+    return data;
+}
+
+Data makeErrInfo(char* errInfo) {
+    Data data = {ERR_INFO, errInfo};
     return data;
 }
 
@@ -83,6 +88,10 @@ List* cdr(List* list) {
     return list->next;
 }
 
+bool isEmptyList(List* list) {
+    return list == NULL;
+}
+
 bool isListInQuote(Data data) {
     if (data.type != ATOM) {
         return false;
@@ -105,12 +114,13 @@ List* reverse(List* list);
 
 Data reverseData(Data data) {
     switch (data.type) {
-        case ATOM:
-        Atom* atom = (Atom*)data.content;
-        if (atom->tag == ATOM_TAG_QUOTE) {
-            return makeQuote(reverseData(*(Data*)atom->content));
+        case ATOM: {
+            Atom* atom = (Atom*)data.content;
+            if (atom->tag == ATOM_TAG_QUOTE) {
+                return makeQuote(reverseData(*(Data*)atom->content));
+            }
+            return data;
         }
-        return data;
         case LIST:
         data.content = reverse((List*)data.content);
         return data;
@@ -118,6 +128,10 @@ Data reverseData(Data data) {
 }
 
 List* reverse(List* list) {
+    if (isEmptyList(list)) {
+        return list;
+    }
+
     // reverse head
     list->data = reverseData(list->data);
 
@@ -181,11 +195,13 @@ void ppList(List* list) {
 void ppData(Data data) {
     switch (data.type) {
         case ATOM:
-            ppAtom(data.content);
-            break;
+        ppAtom(data.content);
+        break;
         case LIST:
-            ppList(data.content);
-            break;
+        ppList(data.content);
+        break;
+        case ERR_INFO:
+        printf("error: %s\n", data.content);
         default:
             break;
     }

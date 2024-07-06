@@ -1,6 +1,7 @@
 typedef enum {
     ATOM,
     LIST,
+    ERR_INFO,
 } DataType;
 
 typedef struct {
@@ -33,10 +34,12 @@ Data makeSymbol(char* s);
 Data makeString(char* s);
 Data makeQuote(Data list);
 Data makeProc(void* proc);
+Data makeErrInfo(char* erfInfo);
 Data datify(List* list);
 List* cons(Data data, List* list);
 Data car(List* list);
 List* cdr(List* list);
+bool isEmptyList(List* list);
 Data reverseData(Data data);
 void ppData(Data data);
 void ppList(List* list);
