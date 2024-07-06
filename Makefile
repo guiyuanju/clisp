@@ -18,5 +18,12 @@ build/parser: build/parser.o build/scanner.o build/format.o build/lisp.o
 parse: build/parser
 	./build/parser
 
+build/evaluator.o: evaluator.c
+	gcc -o build/evaluator.o -c evaluator.c
+build/evaluator: build/parser.o build/scanner.o build/format.o build/lisp.o build/evaluator.o
+	gcc -o build/evaluator build/format.o build/scanner.o build/parser.o build/lisp.o build/evaluator.o
+eval: build/evaluator
+	./build/evaluator
+
 clean:
 	rm build/*

@@ -13,6 +13,7 @@ typedef enum {
     ATOM_TAG_SYMBOL,
     ATOM_TAG_STRING,
     ATOM_TAG_QUOTE,
+    ATOM_TAG_PROC,
 } AtomTag;
 
 typedef struct {
@@ -30,8 +31,12 @@ typedef struct List {
 Data makeInt(int x);
 Data makeSymbol(char* s);
 Data makeString(char* s);
-Data makeQuote(List* list);
+Data makeQuote(Data list);
+Data makeProc(void* proc);
 Data datify(List* list);
 List* cons(Data data, List* list);
+Data car(List* list);
+List* cdr(List* list);
+Data reverseData(Data data);
 void ppData(Data data);
 void ppList(List* list);

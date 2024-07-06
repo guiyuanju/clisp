@@ -10,8 +10,12 @@ bool isDigit(char c) {
     return '0' <= c && c <= '9';
 }
 
+bool isBlank(char c) {
+    return c == ' ' || c == '\n' || c == '\t';
+}
+
 bool isChar(char c) {
-    return !isDigit(c);
+    return !isDigit(c) && !isBlank(c);
 }
 
 bool isParen(char c) {
@@ -56,7 +60,9 @@ bool scanSymbol(char* raw, unsigned* idx, char** symbolAddr) {
     int curIdx = *idx;
     int length = 0;
 
-    while (!isEnd(raw, curIdx + length) && isChar(raw[curIdx + length]) && !isReserved(raw[curIdx + length])) {
+    while (!isEnd(raw, curIdx + length)
+        && (isChar(raw[curIdx + length]) || isDigit(raw[curIdx + length]))
+        && !isReserved(raw[curIdx + length])) {
         length++;
     }
 
