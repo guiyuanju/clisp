@@ -622,7 +622,7 @@ Data eval(Data data) {
                     return data;
                 }
                 case ATOM_TAG_QUOTE:
-                // todo:
+                return *(Data*)atom->content;
             }
         }
         case LIST: {
