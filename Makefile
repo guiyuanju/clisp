@@ -25,8 +25,9 @@
 # eval: build/evaluator
 # 	./build/evaluator
 
-run: clisp.c
+build/clisp: clisp.c
 	gcc -g -o build/clisp -O clisp.c
+run: build/clisp
 	./build/clisp
 
 clean:
