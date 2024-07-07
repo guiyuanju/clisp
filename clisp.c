@@ -3,6 +3,12 @@
 #include "string.h"
 #include "stdbool.h"
 
+/*
+Data = Atom | List | ErrInfo
+Atom = Number | String | Symbol | Quote | Proc
+List = List Data | Null
+*/
+
 // # Utils
 void newline() {
     printf("\n");
@@ -14,9 +20,9 @@ void space() {
 
 // # Model
 typedef enum {
-    ATOM,
-    LIST,
-    ERR_INFO,
+    DATA_TYPE_ATOM,
+    DATA_TYPE_LIST,
+    DATA_TYPE_ERR_INFO,
 } DataType;
 
 typedef struct {
@@ -44,13 +50,15 @@ typedef struct List {
 
 #define Empty NULL
 
+typedef Data (*Proc)(List* list);
+
 Data makeInt(int x) {
     Atom* atom = (Atom*)malloc(sizeof(Atom));
     atom->tag = ATOM_TAG_INT;
     atom->content = malloc(sizeof(int));
     memcpy(atom->content, &x, sizeof(int));
 
-    Data data = {ATOM, atom};
+    Data data = {DATA_TYPE_ATOM, atom};
 
     return data;
 }
@@ -61,7 +69,7 @@ Data makeString(char* s) {
     atom->content = malloc(strlen(s));
     memcpy(atom->content, s, strlen(s));
 
-    Data data = {ATOM, atom};
+    Data data = {DATA_TYPE_ATOM, atom};
 
     return data;
 }
@@ -72,7 +80,7 @@ Data makeSymbol(char* s) {
     atom->content = malloc(strlen(s));
     memcpy(atom->content, s, strlen(s));
 
-    Data data = {ATOM, atom};
+    Data data = {DATA_TYPE_ATOM, atom};
 
     return data;
 }
@@ -83,7 +91,7 @@ Data makeQuote(Data q) {
     atom->content = malloc(sizeof(Data));
     memcpy(atom->content, &q, sizeof(Data));
 
-    Data data = {ATOM, atom};
+    Data data = {DATA_TYPE_ATOM, atom};
     
     return data;
 }
@@ -94,18 +102,18 @@ Data makeProc(void* proc) {
     atom->content = malloc(sizeof(void*));
     memcpy(atom->content, &proc, sizeof(void*));
 
-    Data data = {ATOM, atom};
+    Data data = {DATA_TYPE_ATOM, atom};
 
     return data;
 }
 
 Data makeErrInfo(char* errInfo) {
-    Data data = {ERR_INFO, errInfo};
+    Data data = {DATA_TYPE_ERR_INFO, errInfo};
     return data;
 }
 
 Data datify(List* list) {
-    Data data = {LIST, list};
+    Data data = {DATA_TYPE_LIST, list};
 
     return data;
 }
@@ -131,7 +139,7 @@ bool isEmptyList(List* list) {
 }
 
 bool isListInQuote(Data data) {
-    if (data.type != ATOM) {
+    if (data.type != DATA_TYPE_ATOM) {
         return false;
     }
 
@@ -143,24 +151,28 @@ bool isListInQuote(Data data) {
     
     Data* innerData = (Data*)atom->content;
 
-    return innerData->type == LIST;
+    return innerData->type == DATA_TYPE_LIST;
 }
 
 List* reverse(List* list);
 
 Data reverseData(Data data) {
     switch (data.type) {
-        case ATOM: {
+        case DATA_TYPE_ATOM: {
             Atom* atom = (Atom*)data.content;
             if (atom->tag == ATOM_TAG_QUOTE) {
                 return makeQuote(reverseData(*(Data*)atom->content));
             }
-            return data;
+            break;
         }
-        case LIST:
-        data.content = reverse((List*)data.content);
-        return data;
+        case DATA_TYPE_LIST:
+            data.content = reverse((List*)data.content);
+            break;
+        default:
+            break;
     }
+
+    return data;
 }
 
 List* reverse(List* list) {
@@ -209,7 +221,7 @@ void ppAtom(Atom* atom) {
         ppData(*(Data*)atom->content);
         return;
         case ATOM_TAG_PROC:
-        printf("#proc<%p>", *(Data*)atom->content);
+        printf("#proc<%p>", *(Proc*)atom->content);
         return;
         default:
         printf("unrecognizable type %d\n", atom->tag);
@@ -230,14 +242,15 @@ void ppList(List* list) {
 
 void ppData(Data data) {
     switch (data.type) {
-        case ATOM:
-        ppAtom(data.content);
-        break;
-        case LIST:
-        ppList(data.content);
-        break;
-        case ERR_INFO:
-        printf("error: %s\n", data.content);
+        case DATA_TYPE_ATOM:
+            ppAtom(data.content);
+            break;
+        case DATA_TYPE_LIST:
+            ppList(data.content);
+            break;
+        case DATA_TYPE_ERR_INFO:
+            printf("error: %s\n", (char*)data.content);
+            break;
         default:
             break;
     }
@@ -500,21 +513,22 @@ Data parse(Token* tokens, unsigned count, unsigned* idx) {
     Token curToken = tokens[*idx];
     switch (curToken.type) {
         case TOKENTYPE_LEFT_PAREN:
-        return parseList(tokens, count, idx);
+            return parseList(tokens, count, idx);
         case TOKENTYPE_QUOTE:
-        return parseQuote(tokens, count, idx);
+            return parseQuote(tokens, count, idx);
         case TOKENTYPE_STRING:
-        return parseString(tokens, idx);
+            return parseString(tokens, idx);
         case TOKENTYPE_NUMBER:
-        return parseNumber(tokens, idx);
+            return parseNumber(tokens, idx);
         case TOKENTYPE_SYMBOL:
-        return parseSymbol(tokens, idx);
+            return parseSymbol(tokens, idx);
+        default:
+            // right paren will never be parsed
+            return makeErrInfo("parse error: invalid right paren.");
     }
 }
 
 // # Evaluator
-typedef Data (*Proc)(List* list);
-
 Data plus(List* list) {
     int res = 0;
     while (list != NULL) {
@@ -573,6 +587,16 @@ Data divide(List* list) {
     return makeInt(res);
 }
 
+typedef Data (*SpecialForm)(List* list);
+
+Data specialFormIf(List* list) {
+    Data condition = car(list);
+    Data trueBranch = car(cdr(list));
+    Data falseBranch = car(cdr(cdr(list)));
+
+    return condition;
+}
+
 typedef struct {
     char* symbol;
     Proc proc;
@@ -603,17 +627,18 @@ void* getProcForSymbol(SymbolTable st, char* symbol) {
 }
 
 bool isProc(Data data) {
-    return data.type == ATOM && ((Atom*)data.content)->tag == ATOM_TAG_PROC;
+    return data.type == DATA_TYPE_ATOM && ((Atom*)data.content)->tag == ATOM_TAG_PROC;
 }
 
 Data eval(Data data) {
     switch (data.type) {
-        case ATOM: {
+        case DATA_TYPE_ATOM: {
             Atom* atom = (Atom*)data.content;
             switch (atom->tag) {
                 case ATOM_TAG_INT:
                 case ATOM_TAG_STRING:
-                return data;
+                case ATOM_TAG_PROC:
+                    return data;
                 case ATOM_TAG_SYMBOL: {
                     void* proc = getProcForSymbol(SYMBOL_TABLE, (char*)atom->content);
                     if (proc != NULL) {
@@ -622,10 +647,10 @@ Data eval(Data data) {
                     return data;
                 }
                 case ATOM_TAG_QUOTE:
-                return *(Data*)atom->content;
+                    return *(Data*)atom->content;
             }
         }
-        case LIST: {
+        case DATA_TYPE_LIST: {
             List* list = (List*)data.content;
 
             // empty
@@ -646,6 +671,8 @@ Data eval(Data data) {
 
             return makeErrInfo("evaluation failed, op is not a proc.");
         }
+        default:
+            return data;
     }
 }
 
