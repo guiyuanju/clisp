@@ -8,7 +8,7 @@
             "name": "Launch (lldb)",
             "type": "lldb",
             "request": "launch",
-            "program": "${workspaceFolder}/build/evaluator",
+            "program": "${workspaceFolder}/build/clisp_dev",
             "args": [],
             "cwd": "${workspaceFolder}",
             // "miDebuggerPath": "/Users/june/.vscode/extensions/ms-vscode.cpptools-1.21.0-darwin-arm64/debugAdapters/lldb-mi/bin/lldb-mi",
