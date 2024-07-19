@@ -5,7 +5,7 @@
 
 /*
 Data = Atom | List | ErrInfo
-Atom = Number | String | Symbol | Quote | Proc
+Atom = Number | String | Symbol | Quote | Proc | Bool
 List = List Data | Null
 */
 
@@ -36,6 +36,7 @@ typedef enum {
     ATOM_TAG_STRING,
     ATOM_TAG_QUOTE,
     ATOM_TAG_PROC,
+    ATOM_TAG_BOOL,
 } AtomTag;
 
 typedef struct {
@@ -51,6 +52,11 @@ typedef struct List {
 #define Empty NULL
 
 typedef Data (*Proc)(List* list);
+
+Data makeEmptyList() {
+    Data data = {DATA_TYPE_LIST, NULL};
+    return data;
+}
 
 Data makeInt(int x) {
     Atom* atom = (Atom*)malloc(sizeof(Atom));
@@ -112,6 +118,25 @@ Data makeErrInfo(char* errInfo) {
     return data;
 }
 
+const char* TRUE_VALUE = "#t";
+const char* FALSE_VALUE = "#f";
+
+Data makeBool(bool value) {
+    Atom* atom = (Atom*)malloc(sizeof(Atom));
+    atom->tag = ATOM_TAG_BOOL;
+    if (value) {
+        atom->content = malloc(sizeof(TRUE_VALUE));
+        memcpy(atom->content, TRUE_VALUE, strlen(TRUE_VALUE) + 1);
+    } else {
+        atom->content = malloc(sizeof(FALSE_VALUE));
+        memcpy(atom->content, FALSE_VALUE, strlen(FALSE_VALUE) + 1);
+    }
+
+    Data data = {DATA_TYPE_ATOM, atom};
+
+    return data;
+}
+
 Data datify(List* list) {
     Data data = {DATA_TYPE_LIST, list};
 
@@ -132,6 +157,15 @@ Data car(List* list) {
 
 List* cdr(List* list) {
     return list->next;
+}
+
+int length(List* list) {
+    int res = 0;
+    while (list != NULL) {
+        res++;
+        list = list->next;
+    }
+    return res;
 }
 
 bool isEmptyList(List* list) {
@@ -208,23 +242,26 @@ void ppAtom(Atom* atom) {
 
     switch (atom->tag) {
         case ATOM_TAG_INT:
-        printf("%d", *(int*)atom->content);
-        return;
+            printf("%d", *(int*)atom->content);
+            break;
         case ATOM_TAG_SYMBOL:
-        printf("%s", (char*)atom->content);
-        return;
+            printf("%s", (char*)atom->content);
+            break;
         case ATOM_TAG_STRING:
-        printf("\"%s\"", (char*)atom->content);
-        return;
+            printf("\"%s\"", (char*)atom->content);
+            break;
         case ATOM_TAG_QUOTE:
-        printf("'");
-        ppData(*(Data*)atom->content);
-        return;
+            printf("'");
+            ppData(*(Data*)atom->content);
+            break;
         case ATOM_TAG_PROC:
-        printf("#proc<%p>", *(Proc*)atom->content);
-        return;
+            printf("#proc<%p>", *(Proc*)atom->content);
+            break;
+        case ATOM_TAG_BOOL:
+            printf("%s", (char*)atom->content);
+            break;
         default:
-        printf("unrecognizable type %d\n", atom->tag);
+            printf("unrecognizable type %d\n", atom->tag);
     }
 }
 
@@ -258,12 +295,13 @@ void ppData(Data data) {
 
 // # Scanner
 typedef enum {
-    TOKENTYPE_LEFT_PAREN,
-    TOKENTYPE_RIGHT_PAREN,
-    TOKENTYPE_QUOTE,
-    TOKENTYPE_STRING,
-    TOKENTYPE_NUMBER,
-    TOKENTYPE_SYMBOL,
+    TOKEN_TYPE_LEFT_PAREN,
+    TOKEN_TYPE_RIGHT_PAREN,
+    TOKEN_TYPE_QUOTE,
+    TOKEN_TYPE_STRING,
+    TOKEN_TYPE_NUMBER,
+    TOKEN_TYPE_SYMBOL,
+    TOKEN_TYPE_BOOL,
 } TokenType;
 
 typedef struct {
@@ -375,14 +413,14 @@ bool tokenize(char* raw, Token* tokens, unsigned* tokenCount) {
     for (unsigned i = 0; !isEnd(raw, i) && curCount < *tokenCount;) {
         switch (raw[i]) {
             case '(':
-                curToken.type = TOKENTYPE_LEFT_PAREN;
+                curToken.type = TOKEN_TYPE_LEFT_PAREN;
                 curToken.value.single = '(';
                 tokens[curCount++] = curToken;
                 i++;
                 leftParenCount++;
                 break;
             case ')':
-                curToken.type = TOKENTYPE_RIGHT_PAREN;
+                curToken.type = TOKEN_TYPE_RIGHT_PAREN;
                 curToken.value.single = ')';
                 tokens[curCount++] = curToken;
                 i++;
@@ -392,13 +430,13 @@ bool tokenize(char* raw, Token* tokens, unsigned* tokenCount) {
                 leftParenCount--;
                 break;
             case '\'':
-                curToken.type = TOKENTYPE_QUOTE;
+                curToken.type = TOKEN_TYPE_QUOTE;
                 curToken.value.single = '\'';
                 tokens[curCount++] = curToken;
                 i++;
                 break;
             case '"':
-                curToken.type = TOKENTYPE_STRING;
+                curToken.type = TOKEN_TYPE_STRING;
                 i++; // skip the opening "
                 if (!scanString(raw, &i, &curToken.value.string)) {
                     *tokenCount = curCount - 1;
@@ -406,6 +444,24 @@ bool tokenize(char* raw, Token* tokens, unsigned* tokenCount) {
                 }
                 tokens[curCount++] = curToken;
                 break;
+            case '#':
+                curToken.type = TOKEN_TYPE_BOOL;
+                i++; // skip #
+                if (raw[i] == 't') {
+                    curToken.value.single = 't';
+                } else if (raw[i] == 'f') {
+                    curToken.value.single = 'f';
+                } else {
+                    *tokenCount = curCount - 1;
+                    return false;
+                }
+                i++;
+                if (!isEnd(raw, i) && !isReserved(raw[i]) && !isBlank(raw[i])) {
+                    *tokenCount = curCount - 1;
+                    return false;
+                }
+                tokens[curCount++] = curToken;
+                break; 
             case ' ':
             case '\t':
             case '\n':
@@ -413,13 +469,13 @@ bool tokenize(char* raw, Token* tokens, unsigned* tokenCount) {
                 break;
             default:
                 if (isDigit(raw[i])) {
-                    curToken.type = TOKENTYPE_NUMBER;
+                    curToken.type = TOKEN_TYPE_NUMBER;
                     scanNumber(raw, &i, &curToken.value.number);
                     tokens[curCount++] = curToken;
                     break;
                 }
                 if (isChar(raw[i])) {
-                    curToken.type = TOKENTYPE_SYMBOL;
+                    curToken.type = TOKEN_TYPE_SYMBOL;
                     scanSymbol(raw, &i, &curToken.value.symbol);
                     tokens[curCount++] = curToken;
                     break;
@@ -438,13 +494,14 @@ bool tokenize(char* raw, Token* tokens, unsigned* tokenCount) {
     return true;
 }
 
-unsigned scan(Token* buffer, unsigned count) {
+unsigned scan(Token* buffer, unsigned count, bool* hasErr) {
     char* line = (char*)malloc(sizeof(char) * count);
 
     if (fgets(line, count, stdin) != NULL) {
         count = strlen(line);
         if (!tokenize(line, buffer, &count)) {
             count = 0;
+            *hasErr = true;
             printf("syntax error!\n");
         }
     }
@@ -455,14 +512,20 @@ unsigned scan(Token* buffer, unsigned count) {
 
 void ppToken(Token token) {
     switch (token.type) {
-        case TOKENTYPE_STRING:
-            printf("\"%s\"", token.value.string);
+        case TOKEN_TYPE_QUOTE:
+            printf("quote_%c", token.value.single);
             break;
-        case TOKENTYPE_NUMBER:
-            printf("%d", token.value.number);
+        case TOKEN_TYPE_STRING:
+            printf("string_\"%s\"", token.value.string);
             break;
-        case TOKENTYPE_SYMBOL:
-            printf("%s", token.value.symbol);
+        case TOKEN_TYPE_NUMBER:
+            printf("number_%d", token.value.number);
+            break;
+        case TOKEN_TYPE_SYMBOL:
+            printf("symbol_%s", token.value.symbol);
+            break;
+        case TOKEN_TYPE_BOOL:
+            printf("bool_#%c", token.value.single);
             break;
         default:
             printf("%c", token.value.single);
@@ -501,7 +564,7 @@ Data parseList(Token* tokens, unsigned count, unsigned* idx) {
     List* res = NULL;
 
     (*idx)++;
-    while (*idx < count && tokens[*idx].type != TOKENTYPE_RIGHT_PAREN) {
+    while (*idx < count && tokens[*idx].type != TOKEN_TYPE_RIGHT_PAREN) {
         res = cons(parse(tokens, count, idx), res);
     }
     (*idx)++;
@@ -509,29 +572,50 @@ Data parseList(Token* tokens, unsigned count, unsigned* idx) {
     return datify(res);
 }
 
+Data parseBool(Token* tokens, unsigned* idx) {
+    char c = tokens[*idx].value.single;
+    (*idx)++;
+    if (c == 't') {
+        return makeBool(true);
+    } else {
+        return makeBool(false);
+    }
+}
+
 Data parse(Token* tokens, unsigned count, unsigned* idx) {
     Token curToken = tokens[*idx];
     switch (curToken.type) {
-        case TOKENTYPE_LEFT_PAREN:
+        case TOKEN_TYPE_LEFT_PAREN:
             return parseList(tokens, count, idx);
-        case TOKENTYPE_QUOTE:
+        case TOKEN_TYPE_QUOTE:
             return parseQuote(tokens, count, idx);
-        case TOKENTYPE_STRING:
+        case TOKEN_TYPE_STRING:
             return parseString(tokens, idx);
-        case TOKENTYPE_NUMBER:
+        case TOKEN_TYPE_NUMBER:
             return parseNumber(tokens, idx);
-        case TOKENTYPE_SYMBOL:
+        case TOKEN_TYPE_SYMBOL:
             return parseSymbol(tokens, idx);
+        case TOKEN_TYPE_BOOL:
+            return parseBool(tokens, idx);
         default:
             // right paren will never be parsed
             return makeErrInfo("parse error: invalid right paren.");
     }
 }
 
+
 // # Evaluator
+
+Data eval(Data data);
+
 Data plus(List* list) {
+    if (list == NULL) {
+        return makeErrInfo("+ needs parameters.");
+    }
+
     int res = 0;
     while (list != NULL) {
+        list->data = eval(list->data);
         int cur = *(int*)(((Atom*)(list->data.content))->content);
         res += cur;
         list = list->next;
@@ -540,9 +624,14 @@ Data plus(List* list) {
 }
 
 Data minus(List* list) {
+    if (list == NULL) {
+        return makeErrInfo("- needs parameters.");
+    }
+
     int res = 0;
     int count = 0;
     while (list != NULL) {
+        list->data = eval(list->data);
         int cur = *(int*)(((Atom*)(list->data.content))->content);
         if (count == 0) {
             res = cur;
@@ -559,8 +648,13 @@ Data minus(List* list) {
 }
 
 Data multiply(List* list) {
+    if (list == NULL) {
+        return makeErrInfo("* needs parameters.");
+    }
+
     int res = 1;
     while (list != NULL) {
+        list->data = eval(list->data);
         int cur = *(int*)(((Atom*)(list->data.content))->content);
         res *= cur;
         list = list->next;
@@ -569,13 +663,21 @@ Data multiply(List* list) {
 }
 
 Data divide(List* list) {
+    if (list == NULL) {
+        return makeErrInfo("/ needs parameters.");
+    }
+
     int res = 0;
     int count = 0;
     while (list != NULL) {
+        list->data = eval(list->data);
         int cur = *(int*)(((Atom*)(list->data.content))->content);
         if (count == 0) {
             res = cur;
         } else {
+            if (cur == 0) {
+                return makeErrInfo("divided by zero.");
+            }
             res /= cur;
         }
         count++;
@@ -587,14 +689,60 @@ Data divide(List* list) {
     return makeInt(res);
 }
 
-typedef Data (*SpecialForm)(List* list);
+Data print(List* list) {
+    if (list == NULL) {
+        return makeErrInfo("print needs arguments.");
+    }
 
-Data specialFormIf(List* list) {
+    while (list->next != NULL) {
+        ppData(eval(list->data));
+        space();
+        list = list->next;
+    }
+    ppData(eval(list->data));
+
+    return makeEmptyList();
+}
+
+Data println(List* list) {
+    if (list == NULL) {
+        return makeErrInfo("println needs arguments.");
+    }
+
+    Data res = print(list);
+    newline();
+    return res;
+}
+
+bool isBool(Data data) {
+    Atom* atom = (Atom*)data.content;
+    return data.type == DATA_TYPE_ATOM && atom->tag == ATOM_TAG_BOOL;
+}
+
+bool isBoolValueTrue(Data data) {
+    Atom* atom = (Atom*)data.content;
+    return strcmp((char*)atom->content, TRUE_VALUE) == 0;
+}
+
+bool isBoolValueFalse(Data data) {
+    Atom* atom = (Atom*)data.content;
+    return strcmp((char*)atom->content, FALSE_VALUE) == 0;
+}
+
+Data procIf(List* list) {
+    if (length(list) != 3) {
+        return makeErrInfo("if needs three arguments.");
+    }
+
     Data condition = car(list);
     Data trueBranch = car(cdr(list));
     Data falseBranch = car(cdr(cdr(list)));
 
-    return condition;
+    if (!isBool(eval(condition))) {
+        return makeErrInfo("not a boolean value.");
+    }
+
+    return isBoolValueTrue(condition) ? eval(trueBranch) : eval(falseBranch);
 }
 
 typedef struct {
@@ -612,9 +760,12 @@ Binding bindings[] = {
     {"-", minus},
     {"*", multiply},
     {"/", divide},
+    {"print", print},
+    {"println", println},
+    {"if", procIf},
 };
 
-SymbolTable SYMBOL_TABLE = {sizeof(bindings), bindings};
+SymbolTable SYMBOL_TABLE = {sizeof(bindings) / sizeof(bindings[0]), bindings};
 
 void* getProcForSymbol(SymbolTable st, char* symbol) {
     for (int i = 0; i < st.count; i++) {
@@ -638,6 +789,7 @@ Data eval(Data data) {
                 case ATOM_TAG_INT:
                 case ATOM_TAG_STRING:
                 case ATOM_TAG_PROC:
+                case ATOM_TAG_BOOL:
                     return data;
                 case ATOM_TAG_SYMBOL: {
                     void* proc = getProcForSymbol(SYMBOL_TABLE, (char*)atom->content);
@@ -648,6 +800,8 @@ Data eval(Data data) {
                 }
                 case ATOM_TAG_QUOTE:
                     return *(Data*)atom->content;
+                default:
+                    return makeErrInfo("evaluation failed, unknown atom tag.");
             }
         }
         case DATA_TYPE_LIST: {
@@ -662,10 +816,11 @@ Data eval(Data data) {
             Data proc = eval(car(list));
             if (isProc(proc)) {
                 List* tail = cdr(list);
-                while (tail != NULL) {
-                    tail->data = eval(tail->data);
-                    tail = tail->next;
-                }
+                // I am lazy
+                // while (tail != NULL) {
+                //     tail->data = eval(tail->data);
+                //     tail = tail->next;
+                // }
                 return ((*(Proc*)(((Atom*)(proc.content))->content)))(cdr(list));
             }
 
@@ -681,5 +836,32 @@ int main() {
     #define MAX 100
     Token tokens[MAX] = {0};
     unsigned idx = 0;
-    ppData(eval(reverseData(parse(tokens, scan(tokens, MAX), &idx))));
+    bool hasSyntaxErr = false;
+
+    int count = scan(tokens, MAX, &hasSyntaxErr);
+    if (hasSyntaxErr) {
+        return -1;
+    }
+    printf("scann finished:\n");
+    ppTokens(tokens, count);
+    newline();
+
+    Data data = parse(tokens, count, &idx);
+    printf("parse fininshed:\n");
+    ppData(data);
+    newline();
+
+    data = reverseData(data);
+    printf("reverse fininshed:\n");
+    ppData(data);
+    newline();
+
+    data = eval(data);
+    printf("eval fininshed:\n");
+    ppData(data);
+    newline();
+
+    // ppData(eval(reverseData(parse(tokens, scan(tokens, MAX), &idx))));
 }
+
+// todo: use real print to replace ppData in print proc
