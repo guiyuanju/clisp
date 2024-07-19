@@ -25,10 +25,14 @@
 # eval: build/evaluator
 # 	./build/evaluator
 
-build/clisp: clisp.c
-	gcc -g -o build/clisp -O clisp.c
-run: build/clisp
-	./build/clisp
+build/clisp_dev: clisp.c
+	gcc -g -o build/clisp_dev -O0 clisp.c
+build/clisp_prod: clisp.c
+	gcc -g -o build/clisp_prod -O clisp.c
+run_dev: build/clisp_dev
+	./build/clisp_dev
+run_prod: build/clisp_prod
+	./build/clisp_prod
 
 clean:
 	rm build/*
