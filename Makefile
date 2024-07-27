@@ -34,5 +34,10 @@ run_dev: build/clisp_dev
 run_prod: build/clisp_prod
 	./build/clisp_prod
 
+build/clisp_test: clisp_test.c clisp.c
+	gcc -g -o build/clisp_test -O0 clisp_test.c
+test: build/clisp_test
+	./build/clisp_test
+
 clean:
 	rm build/*
