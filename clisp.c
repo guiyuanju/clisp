@@ -400,29 +400,38 @@ bool scanString(char* raw, unsigned* idx, char** stringAddr) {
     return true;
 }
 
-bool tokenize(char* raw, Token* tokens, unsigned* tokenCount) {
+bool tokenize(char* raw, Token** tokens, unsigned* tokenCount) {
     if (raw == NULL || tokens == NULL) {
         return false;
     }
 
-    unsigned curCount = 0;
-    Token curToken;
+    if (*tokens == NULL) {
+        int count = strlen(raw);
+        *tokens = (Token*)malloc(count * sizeof(Token));
+        *tokenCount = count;
+    }
 
+    Token curToken;
+    unsigned curCount = 0;
     unsigned leftParenCount = 0;
 
     for (unsigned i = 0; !isEnd(raw, i) && curCount < *tokenCount;) {
+        if (curCount >= *tokenCount) {
+            *tokens = (Token*)realloc(*tokens, 2 * curCount);
+        }
+
         switch (raw[i]) {
             case '(':
                 curToken.type = TOKEN_TYPE_LEFT_PAREN;
                 curToken.value.single = '(';
-                tokens[curCount++] = curToken;
+                (*tokens)[curCount++] = curToken;
                 i++;
                 leftParenCount++;
                 break;
             case ')':
                 curToken.type = TOKEN_TYPE_RIGHT_PAREN;
                 curToken.value.single = ')';
-                tokens[curCount++] = curToken;
+                (*tokens)[curCount++] = curToken;
                 i++;
                 if (leftParenCount == 0) {
                     return false;
@@ -432,7 +441,7 @@ bool tokenize(char* raw, Token* tokens, unsigned* tokenCount) {
             case '\'':
                 curToken.type = TOKEN_TYPE_QUOTE;
                 curToken.value.single = '\'';
-                tokens[curCount++] = curToken;
+                (*tokens)[curCount++] = curToken;
                 i++;
                 break;
             case '"':
@@ -442,7 +451,7 @@ bool tokenize(char* raw, Token* tokens, unsigned* tokenCount) {
                     *tokenCount = curCount - 1;
                     return false;
                 }
-                tokens[curCount++] = curToken;
+                (*tokens)[curCount++] = curToken;
                 break;
             case '#':
                 curToken.type = TOKEN_TYPE_BOOL;
@@ -460,7 +469,7 @@ bool tokenize(char* raw, Token* tokens, unsigned* tokenCount) {
                     *tokenCount = curCount - 1;
                     return false;
                 }
-                tokens[curCount++] = curToken;
+                (*tokens)[curCount++] = curToken;
                 break; 
             case ' ':
             case '\t':
@@ -471,13 +480,13 @@ bool tokenize(char* raw, Token* tokens, unsigned* tokenCount) {
                 if (isDigit(raw[i])) {
                     curToken.type = TOKEN_TYPE_NUMBER;
                     scanNumber(raw, &i, &curToken.value.number);
-                    tokens[curCount++] = curToken;
+                    (*tokens)[curCount++] = curToken;
                     break;
                 }
                 if (isChar(raw[i])) {
                     curToken.type = TOKEN_TYPE_SYMBOL;
                     scanSymbol(raw, &i, &curToken.value.symbol);
-                    tokens[curCount++] = curToken;
+                    (*tokens)[curCount++] = curToken;
                     break;
                 }
 
@@ -492,22 +501,6 @@ bool tokenize(char* raw, Token* tokens, unsigned* tokenCount) {
 
     *tokenCount = curCount;
     return true;
-}
-
-unsigned scan(Token* buffer, unsigned count, bool* hasErr) {
-    char* line = (char*)malloc(sizeof(char) * count);
-
-    if (fgets(line, count, stdin) != NULL) {
-        count = strlen(line);
-        if (!tokenize(line, buffer, &count)) {
-            count = 0;
-            *hasErr = true;
-            printf("syntax error!\n");
-        }
-    }
-
-    free(line);
-    return count;
 }
 
 void ppToken(Token token) {
@@ -831,37 +824,40 @@ Data eval(Data data) {
     }
 }
 
-// # Main
-int main() {
-    #define MAX 100
-    Token tokens[MAX] = {0};
-    unsigned idx = 0;
+void repl() {
+    char* line = NULL;
+    size_t lineSize = 0;
+    Token* tokens = NULL;
+    unsigned tokenSize = 0;
     bool hasSyntaxErr = false;
+    
+    printf("> ");
 
-    int count = scan(tokens, MAX, &hasSyntaxErr);
-    if (hasSyntaxErr) {
-        return -1;
+    while (getline(&line, &lineSize, stdin)) {
+        if (!tokenize(line, &tokens, &tokenSize)) {
+            printf("syntax error!\n");
+            continue;
+        }
+
+        unsigned idx = 0;
+        ppData(eval(reverseData(parse(tokens, tokenSize, &idx))));
+        printf("\n> ");
     }
-    printf("scann finished:\n");
-    ppTokens(tokens, count);
-    newline();
 
-    Data data = parse(tokens, count, &idx);
-    printf("parse fininshed:\n");
-    ppData(data);
-    newline();
-
-    data = reverseData(data);
-    printf("reverse fininshed:\n");
-    ppData(data);
-    newline();
-
-    data = eval(data);
-    printf("eval fininshed:\n");
-    ppData(data);
-    newline();
-
-    // ppData(eval(reverseData(parse(tokens, scan(tokens, MAX), &idx))));
+    free(line);
+    free(tokens);
 }
 
+#ifndef TEST
+// # Main
+int main() {
+    repl();
+}
+#endif
+
+
+// todo: symbol should fail if no definition related
 // todo: use real print to replace ppData in print proc
+// todo: implement lambda. lambda + y combinator = hard recursion
+// todo: implement def. def + lambda = function = easy recursion = hard loop
+// todo: tail recursion optimization
