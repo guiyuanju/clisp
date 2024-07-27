@@ -405,9 +405,15 @@ bool tokenize(char* raw, Token** tokens, unsigned* tokenCount) {
         return false;
     }
 
+    int count = strlen(raw);
+
     if (*tokens == NULL) {
-        int count = strlen(raw);
         *tokens = (Token*)malloc(count * sizeof(Token));
+        *tokenCount = count;
+    }
+
+    if (*tokenCount < count) {
+        *tokens = (Token*)realloc(*tokens, count * sizeof(Token));
         *tokenCount = count;
     }
 
@@ -416,10 +422,6 @@ bool tokenize(char* raw, Token** tokens, unsigned* tokenCount) {
     unsigned leftParenCount = 0;
 
     for (unsigned i = 0; !isEnd(raw, i) && curCount < *tokenCount;) {
-        if (curCount >= *tokenCount) {
-            *tokens = (Token*)realloc(*tokens, 2 * curCount);
-        }
-
         switch (raw[i]) {
             case '(':
                 curToken.type = TOKEN_TYPE_LEFT_PAREN;
@@ -834,13 +836,21 @@ void repl() {
     printf("> ");
 
     while (getline(&line, &lineSize, stdin)) {
+        printf("getLine:   %s", line);
         if (!tokenize(line, &tokens, &tokenSize)) {
-            printf("syntax error!\n");
+            printf("syntax error!\n> ");
             continue;
         }
+        printf("tokenized: ");
+        ppTokens(tokens, tokenSize);
+        newline();
 
         unsigned idx = 0;
-        ppData(eval(reverseData(parse(tokens, tokenSize, &idx))));
+        Data data = parse(tokens, tokenSize, &idx);
+        printf("parsed:    ");
+        ppData(data);
+        printf("\nevaluated: ");
+        ppData(eval(reverseData(data)));
         printf("\n> ");
     }
 
